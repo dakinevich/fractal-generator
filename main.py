@@ -1,31 +1,48 @@
-from math import sqrt
 import numpy as np
-import ctypes
-import time
-import matplotlib.pyplot as plt
+from PIL import Image, ImageDraw
 
-try:
-    w, h = ctypes.windll.user32.GetSystemMetrics(0),\
-           ctypes.windll.user32.GetSystemMetrics(1)
-except AttributeError:
-    w, h = 1536, 864
 
-center_ind = [(w-1)/2,(h-1)/2]
+def mandelbrot(c):
+    z = 0
+    n = 0
+    while abs(z) <= 2 and n < iter:
+        z = z*z + c  # fractal formula (z = z*z + c)
+        n += 1
+    return n
 
-t = time.time()
-arr =[[0 for _ in range(w)] for _ in range(h)]
-for ix in range(w):
-    for iy in range(h):
-        arr[iy][ix] = sqrt((w/2 - ix)**2+(h/2-iy)**2)
-print(time.time()-t)
-#print(sum(arr[j][i] for i in range(w) for j in range(h)))
 
-t = time.time()
-arr = np.ndarray((w, h), np.float64)
-for ix in range(w):
-    arr[ix, :] = np.sqrt((w/2 - ix)**2+(h/2-np.arange(h))**2)
-print(time.time()-t)
+def render(arr):
+    im = Image.new('RGB', (w, h), (0, 0, 0))
+    draw = ImageDraw.Draw(im)
+    for ix in range(w):  # main time-eater
+        for iy in range(h):
+            c = arr[ix, iy]
+            m = mandelbrot(c)
+            chennel = 255 - int(m * 255 / iter)
+            draw.point([ix, iy], (chennel, chennel, chennel))
+    im.save('output.png', 'PNG')
 
-t = time.time()
-arr = np.sqrt(np.full((w,h),np.array(np.arange(h)-center_ind[1],np.float64)**2) + np.transpose(np.full((h,w),np.array(np.arange(w)-center_ind[0],np.float64)**2)))
-print(time.time()-t)
+
+if __name__ == "__main__":
+    w, h = 1920, 1080
+    move_x = 0
+    move_y = 0
+    zoom = 1
+    iter = 20
+
+    main_set = np.zeros((w, h), np.complex)
+
+    real_axis = np.array((np.arange(w),), dtype=np.float64)  # gradient
+    imag_axis = np.array((np.arange(h),), dtype=np.float64)
+
+    real_axis += -(w-1)/2 + move_x  # bias
+    imag_axis += -(h-1)/2 + move_y
+
+    real_axis /= (h-1)/4 * zoom  # zoom
+    imag_axis /= (h-1)/4 * zoom
+
+    real_axis = (real_axis*complex(1)).transpose()  # layering real and imag
+    imag_axis = imag_axis*complex(1j)
+    main_set += real_axis + imag_axis
+
+    render(main_set)
