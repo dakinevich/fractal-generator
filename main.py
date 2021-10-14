@@ -1,7 +1,11 @@
+import time
 import numpy as np
 from PIL import Image, ImageDraw
+from numba import njit, prange
+from matplotlib import pyplot as pt
 
 
+@njit(fastmath=True)
 def mandelbrot(c):
     z = 0
     n = 0
@@ -11,38 +15,65 @@ def mandelbrot(c):
     return n
 
 
+@njit(parallel=True, fastmath=True)
 def render(arr):
-    im = Image.new('RGB', (w, h), (0, 0, 0))
-    draw = ImageDraw.Draw(im)
-    for ix in range(w):  # main time-eater
-        for iy in range(h):
-            c = arr[ix, iy]
-            m = mandelbrot(c)
-            chennel = 255 - int(m * 255 / iter)
-            draw.point([ix, iy], (chennel, chennel, chennel))
-    im.save('output.png', 'PNG')
+    np_img = np.zeros(arr.shape, dtype=np.int32)
+    for coord in prange(w*h):  # main time-eater
+        ix = coord % w
+        iy = coord // w
+        c = arr[ix, iy]
+        m = mandelbrot(c)
+        np_img[ix, iy] = m
+    return np_img
+
+
+@njit(fastmath=True)
+def main_set_mapping(real_axis_in, imag_axis_in, main_set_in, move_x_in, move_y_in, zoom_in):
+    # bias
+    real_axis_in += -(w-1)/2 + move_x_in  
+    imag_axis_in += -(h-1)/2 + move_y_in
+    # zoom
+    real_axis_in /= (h-1)/4 * zoom_in  
+    imag_axis_in /= (h-1)/4 * zoom_in
+    # layering real and imag
+    real_axis_in = (real_axis_in*complex(1)).transpose()
+    imag_axis_in = imag_axis_in*complex(1j)
+    main_set_in += real_axis_in + imag_axis_in
+
+    return main_set_in
 
 
 if __name__ == "__main__":
+    # pygame.init()
+
+    # init
     w, h = 1920, 1080
+
     move_x = 0
     move_y = 0
     zoom = 1
-    iter = 20
+    iter = 100
 
-    main_set = np.zeros((w, h), np.complex)
-
-    real_axis = np.array((np.arange(w),), dtype=np.float64)  # gradient
+    main_set = np.zeros((w, h), complex)
+    # gradient
+    real_axis = np.array((np.arange(w),), dtype=np.float64)  
     imag_axis = np.array((np.arange(h),), dtype=np.float64)
+    '''
+    screen = pygame.display.set_mode((w,h))
+    while 1:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT: sys.exit()
+    '''
+    main_set = main_set_mapping(real_axis, imag_axis, main_set, move_x, move_y, zoom)
+    res = render(main_set)  # pre-render cashing
 
-    real_axis += -(w-1)/2 + move_x  # bias
-    imag_axis += -(h-1)/2 + move_y
+    t = time.time()
 
-    real_axis /= (h-1)/4 * zoom  # zoom
-    imag_axis /= (h-1)/4 * zoom
+    res = render(main_set)  # sdl
+    res = 255 - res*255/iter
+    im = Image.fromarray(res.transpose())
+    
+    print(time.time()-t)
 
-    real_axis = (real_axis*complex(1)).transpose()  # layering real and imag
-    imag_axis = imag_axis*complex(1j)
-    main_set += real_axis + imag_axis
+    im.show()
 
-    render(main_set)
